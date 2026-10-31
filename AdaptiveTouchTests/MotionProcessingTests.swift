@@ -2,8 +2,8 @@ import XCTest
 @testable import AdaptiveTouch
 
 final class MotionProcessingTests: XCTestCase {
-    private func sample(_ time: Double, rate: Double = 0, roll: Double = 0, pitch: Double = 0) -> MotionSample {
-        MotionSample(timestamp: time, rotationX: rate, rotationY: 0, rotationZ: 0, roll: roll, pitch: pitch, yaw: 0, accelerationX: 0, accelerationY: 0, accelerationZ: 0)
+    private func sample(_ time: Double, rate: Double = 0, roll: Double = 0, pitch: Double = 0, ax: Double = 0, ay: Double = 0) -> MotionSample {
+        MotionSample(timestamp: time, rotationX: rate, rotationY: 0, rotationZ: 0, roll: roll, pitch: pitch, yaw: 0, accelerationX: ax, accelerationY: ay, accelerationZ: 0)
     }
 
     func testStillAndSudden() {
@@ -46,19 +46,27 @@ final class MotionProcessingTests: XCTestCase {
         XCTAssertFalse(result.isActive)
     }
 
-    func testPresentationTiltMovesBothAxesWithinBounds() {
+    func testTiltAloneDoesNotMoveInterface() {
+        var engine = StabilizationEngine()
+        for index in 0..<80 {
+            let t = Double(index) / 50
+            let result = engine.process(sample(t, rate: 0.3, roll: t * 0.2, pitch: t * 0.15), configuration: MotionConfiguration(), touchActive: false)
+            XCTAssertEqual(result.offset.width, 0, accuracy: 0.001)
+            XCTAssertEqual(result.offset.height, 0, accuracy: 0.001)
+        }
+    }
+
+    func testLateralAccelerationMovesBothAxesWithinBounds() {
         var engine = StabilizationEngine()
         var config = MotionConfiguration()
-        config.presentationMode = true
         config.maxOffset = 28
+        _ = engine.process(sample(0), configuration: config, touchActive: false)
         var result = MotionOutput()
-        for index in 0..<40 {
-            let t = Double(index) / 50
-            result = engine.process(sample(t, rate: 0.3, roll: t * 0.2, pitch: t * 0.15), configuration: config, touchActive: false)
-            XCTAssertLessThanOrEqual(abs(result.offset.width), config.maxOffset)
-            XCTAssertLessThanOrEqual(abs(result.offset.height), config.maxOffset)
+        for index in 1..<15 {
+            result = engine.process(sample(Double(index) / 50, ax: 0.15, ay: 0.12), configuration: config, touchActive: false)
+            XCTAssertLessThanOrEqual(abs(result.offset.width), 28)
+            XCTAssertLessThanOrEqual(abs(result.offset.height), 28)
         }
-        XCTAssertEqual(result.classification, .deliberate)
         XCTAssertLessThan(result.offset.width, -1)
         XCTAssertGreaterThan(result.offset.height, 1)
     }

@@ -73,7 +73,7 @@ final class MotionSensorManager: ObservableObject {
                 let now = ProcessInfo.processInfo.systemUptime
                 let t = now - start
                 let omega = 2 * Double.pi * 4
-                let sample = MotionSample(timestamp: now, rotationX: 0.02 * omega * cos(omega * t), rotationY: 0.01 * omega * cos(omega * t), rotationZ: 0, roll: 0.01 * sin(omega * t), pitch: 0.02 * sin(omega * t), yaw: 0, accelerationX: 0, accelerationY: 0, accelerationZ: 0)
+                let sample = MotionSample(timestamp: now, rotationX: 0.02 * omega * cos(omega * t), rotationY: 0.01 * omega * cos(omega * t), rotationZ: 0, roll: 0.01 * sin(omega * t), pitch: 0.02 * sin(omega * t), yaw: 0, accelerationX: 0.12 * sin(omega * t), accelerationY: 0.10 * cos(omega * t), accelerationZ: 0)
                 let output = processor.process(sample)
                 Task { @MainActor [weak self] in self?.publish(output, generation: token) }
             }

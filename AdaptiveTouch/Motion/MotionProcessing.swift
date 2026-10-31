@@ -29,7 +29,7 @@ enum MotionClassification: String {
 
 struct MotionConfiguration {
     var enabled = true
-    /// Multiplier applied to a conservative mapping of radians to points.
+    /// Multiplier applied to the short-term acceleration response.
     var strength: Double = 0.75
     /// Points; the container must additionally clamp this to available margins.
     var maxOffset: Double = 28
@@ -37,7 +37,7 @@ struct MotionConfiguration {
     var sensitivity: Double = 1
     var updateFrequency: Double = 50
     var freezeDuringTouch = true
-    /// Presentation mode also responds briefly to deliberate tilts.
+    /// Presentation mode makes the lateral acceleration response more visible.
     var presentationMode = true
 }
 
@@ -114,12 +114,12 @@ struct MotionClassifier {
     }
 }
 
-/// Uses short-term attitude deviations, never integrated acceleration. Translation is
-/// portrait screen points. Axis signs are provisional and require physical testing.
+/// Maps gravity-compensated device-frame acceleration to short-lived screen offsets.
+/// No velocity or position is integrated. Axis signs require device testing.
 struct StabilizationEngine {
     private var classifier = MotionClassifier()
-    private var referenceRoll: Double?
-    private var referencePitch: Double?
+    private var baselineX: Double?
+    private var baselineY: Double?
     private var previousTime: TimeInterval?
     private var output = MotionOutput()
     private var needsRecenter = true
@@ -132,21 +132,28 @@ struct StabilizationEngine {
         guard dt > 0, dt.isFinite else { return output }
         if dt > 0.5 { classifier.reset(); needsRecenter = true; output.offset = .zero }
         previousTime = sample.timestamp
-        if needsRecenter || referenceRoll == nil || referencePitch == nil {
-            referenceRoll = sample.roll; referencePitch = sample.pitch; needsRecenter = false
+        if needsRecenter || baselineX == nil || baselineY == nil {
+            baselineX = sample.accelerationX; baselineY = sample.accelerationY; needsRecenter = false
         }
         let (state, confidence) = classifier.classify(sample, sensitivity: configuration.sensitivity)
-        let active = configuration.enabled && (state == .tremorLike || (configuration.presentationMode && state == .deliberate))
-        // Slowly follow deliberate repositioning; stillness recenters the reference.
-        let referenceRate = state == .sudden || (state == .deliberate && !configuration.presentationMode) ? 4.0 : 0.7
-        let refAlpha = 1 - exp(-min(dt, 0.1) * referenceRate)
-        referenceRoll! += wrapped(sample.roll - referenceRoll!) * refAlpha
-        referencePitch! += wrapped(sample.pitch - referencePitch!) * refAlpha
+        // Remove slow sensor bias; these are short-lived acceleration cues, not
+        // displacement estimates. Device X points right and Y points up in portrait.
+        let baselineAlpha = 1 - exp(-min(dt, 0.1) * 1.5)
+        baselineX! += (sample.accelerationX - baselineX!) * baselineAlpha
+        baselineY! += (sample.accelerationY - baselineY!) * baselineAlpha
+        let ax = sample.accelerationX - baselineX!
+        let ay = sample.accelerationY - baselineY!
+        let threshold = 0.012 / min(max(configuration.sensitivity, 0.5), 2)
+        func deadzone(_ value: Double) -> Double {
+            guard abs(value) > threshold else { return 0 }
+            return value > 0 ? value - threshold : value + threshold
+        }
+        let active = configuration.enabled && state != .sudden
         let limit = max(0, min(configuration.maxOffset, 40))
-        // 480 points/radian at strength 1; clamped to the configured limit.
-        let gain = 480 * min(max(configuration.strength, 0), 1)
-        let x = active ? clamp(-wrapped(sample.roll - referenceRoll!) * gain, limit) : 0
-        let y = active ? clamp(wrapped(sample.pitch - referencePitch!) * gain, limit) : 0
+        // Points per g. Presentation mode is stronger but still clamped.
+        let gain = (configuration.presentationMode ? 350.0 : 180.0) * min(max(configuration.strength, 0), 1)
+        let x = active ? clamp(-deadzone(ax) * gain, limit) : 0
+        let y = active ? clamp(deadzone(ay) * gain, limit) : 0
         if !(touchActive && configuration.freezeDuringTouch && configuration.enabled && state != .sudden) {
             let alpha = 1 - exp(-min(dt, 0.1) * 12)
             output.offset.width += (x - output.offset.width) * alpha
@@ -164,5 +171,4 @@ struct StabilizationEngine {
     }
 
     private func clamp(_ value: Double, _ limit: Double) -> Double { min(max(value, -limit), limit) }
-    private func wrapped(_ angle: Double) -> Double { atan2(sin(angle), cos(angle)) }
 }

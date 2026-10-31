@@ -27,7 +27,7 @@ struct AccessibilitySettingsScreen: View {
                 slider("Motion sensitivity", value: $sensitivity, range: 0.5...2)
                 slider("Outer margin", value: $margin, range: 0.04...0.18)
                 Toggle("Presentation motion", isOn: $presentationMotion)
-                Text("Presentation motion also responds to deliberate tilts. Turn it off for more conservative motion compensation.").font(.footnote)
+                Text("Presentation motion increases the response to lateral movement. Turn it off for a gentler response.").font(.footnote)
                 Toggle("Pause movement while pressing", isOn: $freezeTouch)
                 Button("Recenter") { motion.recenter() }.frame(minHeight: 44)
                 Button("Restore motion defaults") { enabled = true; strength = 0.75; maxOffset = 28; sensitivity = 1; margin = 0.12; freezeTouch = true; presentationMotion = true; motion.recenter() }.frame(minHeight: 44)
