@@ -46,6 +46,23 @@ final class MotionProcessingTests: XCTestCase {
         XCTAssertFalse(result.isActive)
     }
 
+    func testPresentationTiltMovesBothAxesWithinBounds() {
+        var engine = StabilizationEngine()
+        var config = MotionConfiguration()
+        config.presentationMode = true
+        config.maxOffset = 28
+        var result = MotionOutput()
+        for index in 0..<40 {
+            let t = Double(index) / 50
+            result = engine.process(sample(t, rate: 0.3, roll: t * 0.2, pitch: t * 0.15), configuration: config, touchActive: false)
+            XCTAssertLessThanOrEqual(abs(result.offset.width), config.maxOffset)
+            XCTAssertLessThanOrEqual(abs(result.offset.height), config.maxOffset)
+        }
+        XCTAssertEqual(result.classification, .deliberate)
+        XCTAssertLessThan(result.offset.width, -1)
+        XCTAssertGreaterThan(result.offset.height, 1)
+    }
+
     func testTouchFreezesAndRecenterIsBounded() {
         var engine = StabilizationEngine()
         let config = MotionConfiguration()

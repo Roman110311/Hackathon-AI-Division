@@ -3,11 +3,12 @@ import SwiftUI
 struct AccessibilitySettingsScreen: View {
     @ObservedObject var motion: MotionSensorManager
     @AppStorage("motionEnabled") private var enabled = true
-    @AppStorage("strength") private var strength = 0.5
-    @AppStorage("maxOffset") private var maxOffset = 12.0
+    @AppStorage("strength") private var strength = 0.75
+    @AppStorage("maxOffset") private var maxOffset = 28.0
     @AppStorage("sensitivity") private var sensitivity = 1.0
-    @AppStorage("margin") private var margin = 0.07
+    @AppStorage("margin") private var margin = 0.12
     @AppStorage("freezeTouch") private var freezeTouch = true
+    @AppStorage("presentationMotion") private var presentationMotion = true
     @AppStorage("expansion") private var expansion = 6.0
     @AppStorage("tolerance") private var tolerance = 12.0
     @AppStorage("touchMode") private var mode = "protected"
@@ -22,12 +23,14 @@ struct AccessibilitySettingsScreen: View {
             Section("Motion stabilization") {
                 Toggle("Stabilization", isOn: $enabled)
                 slider("Strength", value: $strength, range: 0...1)
-                slider("Maximum offset (points)", value: $maxOffset, range: 0...24)
+                slider("Maximum offset (points)", value: $maxOffset, range: 0...40)
                 slider("Motion sensitivity", value: $sensitivity, range: 0.5...2)
-                slider("Outer margin", value: $margin, range: 0.04...0.12)
+                slider("Outer margin", value: $margin, range: 0.04...0.18)
+                Toggle("Presentation motion", isOn: $presentationMotion)
+                Text("Presentation motion also responds to deliberate tilts. Turn it off for more conservative motion compensation.").font(.footnote)
                 Toggle("Pause movement while pressing", isOn: $freezeTouch)
                 Button("Recenter") { motion.recenter() }.frame(minHeight: 44)
-                Button("Restore motion defaults") { enabled = true; strength = 0.5; maxOffset = 12; sensitivity = 1; margin = 0.07; freezeTouch = true; motion.recenter() }.frame(minHeight: 44)
+                Button("Restore motion defaults") { enabled = true; strength = 0.75; maxOffset = 28; sensitivity = 1; margin = 0.12; freezeTouch = true; presentationMotion = true; motion.recenter() }.frame(minHeight: 44)
             }
             Section("Touch assistance") {
                 slider("Target expansion (points)", value: $expansion, range: 0...16)

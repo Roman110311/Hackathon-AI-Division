@@ -30,13 +30,15 @@ enum MotionClassification: String {
 struct MotionConfiguration {
     var enabled = true
     /// Multiplier applied to a conservative mapping of radians to points.
-    var strength: Double = 0.5
+    var strength: Double = 0.75
     /// Points; the container must additionally clamp this to available margins.
-    var maxOffset: Double = 12
+    var maxOffset: Double = 28
     /// Higher values detect smaller oscillations; not a diagnosis.
     var sensitivity: Double = 1
     var updateFrequency: Double = 50
     var freezeDuringTouch = true
+    /// Presentation mode also responds briefly to deliberate tilts.
+    var presentationMode = true
 }
 
 struct MotionOutput {
@@ -134,15 +136,15 @@ struct StabilizationEngine {
             referenceRoll = sample.roll; referencePitch = sample.pitch; needsRecenter = false
         }
         let (state, confidence) = classifier.classify(sample, sensitivity: configuration.sensitivity)
-        let active = configuration.enabled && state == .tremorLike
+        let active = configuration.enabled && (state == .tremorLike || (configuration.presentationMode && state == .deliberate))
         // Slowly follow deliberate repositioning; stillness recenters the reference.
-        let referenceRate = state == .deliberate || state == .sudden ? 4.0 : 0.7
+        let referenceRate = state == .sudden || (state == .deliberate && !configuration.presentationMode) ? 4.0 : 0.7
         let refAlpha = 1 - exp(-min(dt, 0.1) * referenceRate)
         referenceRoll! += wrapped(sample.roll - referenceRoll!) * refAlpha
         referencePitch! += wrapped(sample.pitch - referencePitch!) * refAlpha
         let limit = max(0, min(configuration.maxOffset, 40))
-        // 180 points/radian at strength 1. Clamp protects against uncertain attitude.
-        let gain = 180 * min(max(configuration.strength, 0), 1)
+        // 480 points/radian at strength 1; clamped to the configured limit.
+        let gain = 480 * min(max(configuration.strength, 0), 1)
         let x = active ? clamp(-wrapped(sample.roll - referenceRoll!) * gain, limit) : 0
         let y = active ? clamp(wrapped(sample.pitch - referencePitch!) * gain, limit) : 0
         if !(touchActive && configuration.freezeDuringTouch && configuration.enabled && state != .sudden) {

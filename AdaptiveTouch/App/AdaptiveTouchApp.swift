@@ -24,11 +24,12 @@ struct AppRoot: View {
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @AppStorage("motionEnabled") private var motionEnabled = true
-    @AppStorage("strength") private var strength = 0.5
-    @AppStorage("maxOffset") private var maxOffset = 12.0
+    @AppStorage("strength") private var strength = 0.75
+    @AppStorage("maxOffset") private var maxOffset = 28.0
     @AppStorage("sensitivity") private var sensitivity = 1.0
-    @AppStorage("margin") private var margin = 0.07
+    @AppStorage("margin") private var margin = 0.12
     @AppStorage("freezeTouch") private var freezeTouch = true
+    @AppStorage("presentationMotion") private var presentationMotion = true
     @AppStorage("expansion") private var expansion = 6.0
     @AppStorage("tolerance") private var tolerance = 12.0
     @AppStorage("touchMode") private var touchMode = "protected"
@@ -39,7 +40,7 @@ struct AppRoot: View {
     @AppStorage("simulation") private var simulation = false
     @AppStorage("debugOverlay") private var debugOverlay = false
 
-    private var configKey: String { "\(motionEnabled),\(strength),\(maxOffset),\(sensitivity),\(freezeTouch),\(reduceMotion),\(systemReduceMotion),\(simulation),\(String(describing: demoMode))" }
+    private var configKey: String { "\(motionEnabled),\(strength),\(maxOffset),\(sensitivity),\(freezeTouch),\(presentationMotion),\(reduceMotion),\(systemReduceMotion),\(simulation),\(String(describing: demoMode))" }
     private var touchConfig: TouchConfiguration {
         var config = TouchConfiguration()
         config.expansion = expansion; config.movementTolerance = tolerance
@@ -50,8 +51,8 @@ struct AppRoot: View {
     }
     var body: some View {
         GeometryReader { geometry in
-            let horizontal = geometry.size.width * min(max(margin, 0.04), 0.12)
-            let vertical = geometry.size.height * min(max(margin, 0.04), 0.12)
+            let horizontal = geometry.size.width * min(max(margin, 0.04), 0.18)
+            let vertical = geometry.size.height * min(max(margin, 0.04), 0.18)
             let x = min(max(motion.state.offset.width, -horizontal), horizontal)
             let y = min(max(motion.state.offset.height, -vertical), vertical)
             ZStack {
@@ -76,7 +77,7 @@ struct AppRoot: View {
                 }
             }
         }
-        .onAppear { configure(); updateLifecycle() }
+        .onAppear { migrateMotionDefaults(); configure(); updateLifecycle() }
         .onChange(of: configKey) { _ in configure(); updateLifecycle() }
         .onChange(of: phase) { _ in updateLifecycle() }
     }
@@ -85,8 +86,17 @@ struct AppRoot: View {
         config.enabled = motionEnabled && demoMode != false && !reduceMotion && !systemReduceMotion
         config.strength = strength; config.maxOffset = maxOffset
         config.sensitivity = sensitivity; config.freezeDuringTouch = freezeTouch
+        config.presentationMode = presentationMotion
         motion.updateConfiguration(config)
         motion.simulationEnabled = simulation
+    }
+    private func migrateMotionDefaults() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: "presentationDefaultsMigrated") else { return }
+        if defaults.object(forKey: "strength") != nil && strength == 0.5 { strength = 0.75 }
+        if defaults.object(forKey: "maxOffset") != nil && maxOffset == 12 { maxOffset = 28 }
+        if defaults.object(forKey: "margin") != nil && margin == 0.07 { margin = 0.12 }
+        defaults.set(true, forKey: "presentationDefaultsMigrated")
     }
     private func updateLifecycle() {
         if phase == .active && (motionEnabled || simulation) { motion.start() } else { motion.stop() }
