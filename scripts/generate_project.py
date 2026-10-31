@@ -32,7 +32,7 @@ for target, label, product, kind in [('app','AdaptiveTouch','appProduct','com.ap
 for scope in ['project','app','tests']:
     for config in ['Debug','Release']:
         settings = {'SWIFT_VERSION':'5.0','IPHONEOS_DEPLOYMENT_TARGET':'16.0','SDKROOT':'iphoneos'}
-        if scope == 'app': settings.update({'PRODUCT_BUNDLE_IDENTIFIER':'org.example.AdaptiveTouch','PRODUCT_NAME':'AdaptiveTouch','GENERATE_INFOPLIST_FILE':'YES','INFOPLIST_KEY_UILaunchScreen_Generation':'YES','INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone':'UIInterfaceOrientationPortrait','TARGETED_DEVICE_FAMILY':'1','CODE_SIGN_STYLE':'Automatic','CURRENT_PROJECT_VERSION':'1','MARKETING_VERSION':'1.0'})
+        if scope == 'app': settings.update({'PRODUCT_BUNDLE_IDENTIFIER':'org.example.AdaptiveTouch','PRODUCT_NAME':'AdaptiveTouch','GENERATE_INFOPLIST_FILE':'YES','INFOPLIST_KEY_UILaunchScreen_Generation':'YES','INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone':'YES','INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone':'UIInterfaceOrientationPortrait','TARGETED_DEVICE_FAMILY':'1','CODE_SIGN_STYLE':'Automatic','CURRENT_PROJECT_VERSION':'1','MARKETING_VERSION':'1.0'})
         if scope == 'tests': settings.update({'PRODUCT_BUNDLE_IDENTIFIER':'org.example.AdaptiveTouchTests','GENERATE_INFOPLIST_FILE':'YES','TEST_HOST':'$(BUILT_PRODUCTS_DIR)/AdaptiveTouch.app/AdaptiveTouch','BUNDLE_LOADER':'$(TEST_HOST)','TARGETED_DEVICE_FAMILY':'1'})
         if config == 'Debug': settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS']='DEBUG $(inherited)'; settings['ENABLE_TESTABILITY']='YES'
         st = ' '.join(f'{k} = {q(v)};' for k,v in settings.items())

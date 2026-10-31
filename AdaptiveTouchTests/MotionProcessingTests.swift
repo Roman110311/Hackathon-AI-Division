@@ -71,6 +71,19 @@ final class MotionProcessingTests: XCTestCase {
         XCTAssertGreaterThan(result.offset.height, 1)
     }
 
+    func testMotionSpeedIsLimitedDuringReversal() {
+        var engine = StabilizationEngine()
+        let config = MotionConfiguration()
+        _ = engine.process(sample(0), configuration: config, touchActive: false)
+        var previous = CGSize.zero
+        for index in 1...60 {
+            let acceleration = index < 30 ? 0.4 : -0.4
+            let result = engine.process(sample(Double(index) / 120, ax: acceleration), configuration: config, touchActive: false)
+            XCTAssertLessThanOrEqual(abs(result.offset.width - previous.width), 90.0 / 120.0 + 0.001)
+            previous = result.offset
+        }
+    }
+
     func testTouchFreezesAndRecenterIsBounded() {
         var engine = StabilizationEngine()
         let config = MotionConfiguration()

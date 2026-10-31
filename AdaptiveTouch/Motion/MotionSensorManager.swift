@@ -1,6 +1,8 @@
 import Foundation
 import Combine
 import CoreMotion
+import UIKit
+import QuartzCore
 
 /// Owns Core Motion for the foreground. Sensor processing runs on a serial queue;
 /// published values are delivered on the main queue. No samples are saved to disk.
@@ -21,6 +23,9 @@ final class MotionSensorManager: ObservableObject {
     private let operationQueue: OperationQueue
     private let processor = MotionWorker()
     private var timer: DispatchSourceTimer?
+    private var displayLink: CADisplayLink?
+    private var displayLinkProxy: MotionDisplayLinkProxy?
+    private let latestOutput = LatestMotionOutput()
     private var generation = 0
     private var configuration = MotionConfiguration()
 
@@ -59,7 +64,8 @@ final class MotionSensorManager: ObservableObject {
         isRunning = true
         generation += 1
         let token = generation
-        let interval = 1 / min(max(configuration.updateFrequency, 10), 60)
+        let interval = 1 / min(max(configuration.updateFrequency, 10), 120)
+        startDisplayLink()
         queue.async { [processor, configuration] in
             processor.configuration = configuration
             processor.engine.reset()
@@ -69,19 +75,21 @@ final class MotionSensorManager: ObservableObject {
             let source = DispatchSource.makeTimerSource(queue: queue)
             let start = ProcessInfo.processInfo.systemUptime
             source.schedule(deadline: .now(), repeating: interval)
-            source.setEventHandler { [weak self, processor] in
+            let latestOutput = self.latestOutput
+            source.setEventHandler { [processor, latestOutput] in
                 let now = ProcessInfo.processInfo.systemUptime
                 let t = now - start
                 let omega = 2 * Double.pi * 4
                 let sample = MotionSample(timestamp: now, rotationX: 0.02 * omega * cos(omega * t), rotationY: 0.01 * omega * cos(omega * t), rotationZ: 0, roll: 0.01 * sin(omega * t), pitch: 0.02 * sin(omega * t), yaw: 0, accelerationX: 0.12 * sin(omega * t), accelerationY: 0.10 * cos(omega * t), accelerationZ: 0)
                 let output = processor.process(sample)
-                Task { @MainActor [weak self] in self?.publish(output, generation: token) }
+                latestOutput.store(output, generation: token)
             }
             timer = source
             source.resume()
         } else {
             motionManager.deviceMotionUpdateInterval = interval
-            motionManager.startDeviceMotionUpdates(to: operationQueue) { [weak self, processor] motion, error in
+            let latestOutput = self.latestOutput
+            motionManager.startDeviceMotionUpdates(to: operationQueue) { [weak self, processor, latestOutput] motion, error in
                 guard let motion = motion else {
                     if let error = error {
                         let description = (error as NSError).localizedDescription
@@ -92,7 +100,7 @@ final class MotionSensorManager: ObservableObject {
                 let r = motion.rotationRate, a = motion.userAcceleration, g = motion.gravity, attitude = motion.attitude
                 let sample = MotionSample(timestamp: motion.timestamp, rotationX: r.x, rotationY: r.y, rotationZ: r.z, roll: attitude.roll, pitch: attitude.pitch, yaw: attitude.yaw, accelerationX: a.x, accelerationY: a.y, accelerationZ: a.z, gravityX: g.x, gravityY: g.y, gravityZ: g.z)
                 let output = processor.process(sample)
-                Task { @MainActor [weak self] in self?.publish(output, generation: token) }
+                latestOutput.store(output, generation: token)
             }
         }
     }
@@ -101,6 +109,10 @@ final class MotionSensorManager: ObservableObject {
         generation += 1
         isRunning = false
         motionManager.stopDeviceMotionUpdates()
+        displayLink?.invalidate()
+        displayLink = nil
+        displayLinkProxy = nil
+        latestOutput.clear()
         timer?.cancel()
         timer = nil
         state = MotionOutput()
@@ -108,10 +120,26 @@ final class MotionSensorManager: ObservableObject {
         queue.async { [processor] in processor.engine.reset(); processor.touchActive = false }
     }
 
+    private func startDisplayLink() {
+        let proxy = MotionDisplayLinkProxy(manager: self)
+        let link = CADisplayLink(target: proxy, selector: #selector(MotionDisplayLinkProxy.tick))
+        let maximum = Float(UIScreen.main.maximumFramesPerSecond)
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: maximum, preferred: maximum)
+        link.add(to: .main, forMode: .common)
+        displayLinkProxy = proxy
+        displayLink = link
+    }
+
+    fileprivate func displayTick() {
+        guard let item = latestOutput.take() else { return }
+        publish(item.output, generation: item.generation)
+    }
+
     private func publish(_ output: MotionOutput, generation: Int) {
         guard isRunning && generation == self.generation else { return }
         state = output
-        statusMessage = simulationEnabled ? "Simulation is running." : "Receiving iPhone motion data."
+        let message = simulationEnabled ? "Simulation is running." : "Receiving iPhone motion data."
+        if statusMessage != message { statusMessage = message }
     }
 
     private func handleFailure(generation: Int, description: String) {
@@ -130,4 +158,27 @@ private final class MotionWorker: @unchecked Sendable {
     func process(_ sample: MotionSample) -> MotionOutput {
         engine.process(sample, configuration: configuration, touchActive: touchActive)
     }
+}
+
+/// Only the newest sensor result is needed at the next screen refresh.
+private final class LatestMotionOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var item: (output: MotionOutput, generation: Int)?
+    func store(_ output: MotionOutput, generation: Int) {
+        lock.lock(); defer { lock.unlock() }
+        item = (output, generation)
+    }
+    func take() -> (output: MotionOutput, generation: Int)? {
+        lock.lock(); defer { lock.unlock() }
+        let result = item
+        item = nil
+        return result
+    }
+    func clear() { lock.lock(); item = nil; lock.unlock() }
+}
+
+@MainActor private final class MotionDisplayLinkProxy: NSObject {
+    weak var manager: MotionSensorManager?
+    init(manager: MotionSensorManager) { self.manager = manager }
+    @objc func tick() { manager?.displayTick() }
 }

@@ -35,7 +35,7 @@ struct MotionConfiguration {
     var maxOffset: Double = 28
     /// Higher values detect smaller oscillations; not a diagnosis.
     var sensitivity: Double = 1
-    var updateFrequency: Double = 50
+    var updateFrequency: Double = 120
     var freezeDuringTouch = true
     /// Presentation mode makes the lateral acceleration response more visible.
     var presentationMode = true
@@ -155,9 +155,13 @@ struct StabilizationEngine {
         let x = active ? clamp(-deadzone(ax) * gain, limit) : 0
         let y = active ? clamp(deadzone(ay) * gain, limit) : 0
         if !(touchActive && configuration.freezeDuringTouch && configuration.enabled && state != .sudden) {
-            let alpha = 1 - exp(-min(dt, 0.1) * 12)
-            output.offset.width += (x - output.offset.width) * alpha
-            output.offset.height += (y - output.offset.height) * alpha
+            // Time-based low-pass plus a points/second speed limit prevents sharp
+            // reversals during rapid shaking without depending on the sample rate.
+            let step = min(dt, 0.1)
+            let alpha = 1 - exp(-step * 7)
+            let maxStep = 90 * step
+            output.offset.width += clamp((x - output.offset.width) * alpha, maxStep)
+            output.offset.height += clamp((y - output.offset.height) * alpha, maxStep)
         }
         // Clamp even when settings change during an active touch.
         output.offset.width = clamp(output.offset.width, limit)
