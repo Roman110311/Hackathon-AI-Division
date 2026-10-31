@@ -61,6 +61,14 @@ struct DiagnosticsScreen: View {
         List {
             Text(motion.simulationEnabled ? "Simulation Active" : "Physical sensor")
             Text("Sensor available: \(motion.isAvailable ? "Yes" : "No")")
+            Text("Status: \(motion.statusMessage)")
+            Text("Updates running: \(motion.isRunning ? "Yes" : "No")")
+            #if targetEnvironment(simulator)
+            Text("Running in iOS Simulator")
+            #else
+            Text("Running on a device")
+            #endif
+            Button("Retry motion updates") { motion.stop(); motion.start() }
             Text("State: \(motion.state.classification.rawValue)")
             Text("Confidence: \(motion.state.confidence, specifier: "%.2f")")
             Text("Offset: \(motion.state.offset.width, specifier: "%.1f"), \(motion.state.offset.height, specifier: "%.1f") points")

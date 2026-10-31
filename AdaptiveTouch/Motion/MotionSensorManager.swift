@@ -9,6 +9,7 @@ final class MotionSensorManager: ObservableObject {
     @Published private(set) var state = MotionOutput()
     @Published private(set) var isAvailable = false
     @Published private(set) var isRunning = false
+    @Published private(set) var statusMessage = "Motion updates have not started yet."
     @Published var simulationEnabled = false {
         didSet {
             if oldValue != simulationEnabled && isRunning { stop(); start() }
@@ -49,7 +50,12 @@ final class MotionSensorManager: ObservableObject {
     func start() {
         guard !isRunning else { return }
         isAvailable = simulationEnabled || motionManager.isDeviceMotionAvailable
-        guard isAvailable else { state = MotionOutput(); return }
+        guard isAvailable else {
+            state = MotionOutput()
+            statusMessage = "Device motion is unavailable. Check that the app is running on the iPhone, then try again."
+            return
+        }
+        statusMessage = simulationEnabled ? "Simulation is running." : "Starting iPhone motion sensors…"
         isRunning = true
         generation += 1
         let token = generation
@@ -77,8 +83,9 @@ final class MotionSensorManager: ObservableObject {
             motionManager.deviceMotionUpdateInterval = interval
             motionManager.startDeviceMotionUpdates(to: operationQueue) { [weak self, processor] motion, error in
                 guard let motion = motion else {
-                    if error != nil {
-                        Task { @MainActor [weak self] in self?.handleFailure(generation: token) }
+                    if let error = error {
+                        let description = (error as NSError).localizedDescription
+                        Task { @MainActor [weak self] in self?.handleFailure(generation: token, description: description) }
                     }
                     return
                 }
@@ -97,18 +104,21 @@ final class MotionSensorManager: ObservableObject {
         timer?.cancel()
         timer = nil
         state = MotionOutput()
+        statusMessage = "Motion updates stopped."
         queue.async { [processor] in processor.engine.reset(); processor.touchActive = false }
     }
 
     private func publish(_ output: MotionOutput, generation: Int) {
         guard isRunning && generation == self.generation else { return }
         state = output
+        statusMessage = simulationEnabled ? "Simulation is running." : "Receiving iPhone motion data."
     }
 
-    private func handleFailure(generation: Int) {
+    private func handleFailure(generation: Int, description: String) {
         guard generation == self.generation else { return }
         stop()
-        isAvailable = false
+        isAvailable = motionManager.isDeviceMotionAvailable
+        statusMessage = "Motion updates stopped: \(description)"
     }
 }
 

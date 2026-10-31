@@ -48,17 +48,26 @@ struct CalibrationScreen: View {
             }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationTitle("Calibration").navigationBarTitleDisplayMode(.inline)
-        .onDisappear { captureTask?.cancel() }
+        .onDisappear { captureTask?.cancel(); if !enabled { motion.stop() } }
     }
     private var recommendedSensitivity: Double { baseline > 0.12 ? 0.8 : (baseline < 0.025 ? 1.2 : 1.0) }
     private func capture(next: Int) {
         guard !collecting else { return }
         guard !motion.simulationEnabled else { message = "Turn off simulated motion to calibrate using your phone."; return }
-        guard motion.isAvailable && motion.isRunning else { message = "Motion sensor unavailable. Turn on stabilization and try again on an iPhone."; return }
+        // Start on demand: calibration needs actual sensor samples even if the user
+        // previously disabled the visual stabilization setting.
+        motion.start()
+        guard motion.isRunning else { message = motion.statusMessage; return }
         collecting = true; message = ""
         captureTask = Task { @MainActor in
             var values: [Double] = []
             var lastTimestamp: TimeInterval = -1
+            // Allow the hardware a short startup period before the 3-second sample.
+            for _ in 0..<40 {
+                if motion.state.sample != nil || !motion.isRunning { break }
+                do { try await Task.sleep(nanoseconds: 50_000_000) } catch { collecting = false; return }
+            }
+            guard motion.isRunning else { collecting = false; message = motion.statusMessage; return }
             for _ in 0..<60 {
                 do { try await Task.sleep(nanoseconds: 50_000_000) } catch { collecting = false; return }
                 if let sample = motion.state.sample, sample.timestamp != lastTimestamp {
@@ -66,7 +75,7 @@ struct CalibrationScreen: View {
                 }
             }
             collecting = false
-            guard values.count >= 10 else { message = "Not enough sensor readings. Please try again."; return }
+            guard values.count >= 10 else { message = "Not enough motion readings. \(motion.statusMessage) Please try again."; return }
             let average = values.reduce(0, +) / Double(values.count)
             if next == 1 { baseline = average; motion.recenter() } else { deliberate = average }
             stage = next
